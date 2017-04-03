@@ -1,3 +1,5 @@
+#! /usr/bin/env node
+
 import * as filesize from 'filesize';
 import * as humanTime from 'human-time';
 import * as prettyMs from 'pretty-ms';
