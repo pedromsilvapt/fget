@@ -20,6 +20,8 @@ export class Sockets {
 
                 fn( { result } );
             } catch ( error ) {
+                console.error( error );
+                
                 fn( { error } );
             }
         } );

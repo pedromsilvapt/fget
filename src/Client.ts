@@ -11,26 +11,20 @@ import { Sockets } from "./Sockets";
 
 
 export class Client {
-    target : string;
-
     source : string;
 
     socket : SocketIOClient.Socket;
 
-    bundle : IBundleMessage;
-
     concurrency : number = 1;
 
-    constructor ( target : string, source : string ) {
-        this.target = target;
-
+    constructor ( source : string ) {
         this.source = source;
 
         this.socket = SocketClient( source );
     }
 
-    async downloadFile ( bundle : IBundleMessage, fileId : number, file : FileRecord, reporter ?: ProgressReporter ) {
-        let target = path.join( this.target, file.target || path.basename( file.source ) );
+    async downloadFile ( targetFolder : string, bundle : IBundleMessage, fileId : number, file : FileRecord, reporter ?: ProgressReporter ) {
+        let target = path.join( targetFolder, file.target || path.basename( file.source ) );
 
         await fs.ensureDir( path.dirname( target ) );
 
@@ -62,14 +56,14 @@ export class Client {
         } );
     }
 
-    async download ( path : string = null, reporter ?: Partial<IProgressReporter> ) {
+    async download ( target : string, path : string = null, reporter ?: Partial<IProgressReporter> ) {
         let proxy : ProgressReporter;
 
         if ( reporter ) {
             proxy = new ProgressReporter( reporter );
         }
 
-        this.socket.emit( 'command', { name: 'fetch', ip: internalIp.v4(), path: path } );
+        // this.socket.emit( 'command', { name: 'fetch', ip: internalIp.v4(), path: path } );
 
         let bundle = await Sockets.emit<IBundleMessage>( this.socket, 'command', { name: 'fetch', ip: internalIp.v4(), path: path } );
 
@@ -84,7 +78,7 @@ export class Client {
         for ( let [ index, file ] of bundle.files.entries() ) {
             downloads.push( 
                 queue.add( 
-                    () => this.downloadFile( bundle, index, file, proxy )
+                    () => this.downloadFile( target, bundle, index, file, proxy )
                 ) 
             );
         }
@@ -92,42 +86,20 @@ export class Client {
         await Promise.all( downloads );
         
         if ( proxy ) {
-            proxy.bundleFinished( this.bundle );
+            proxy.bundleFinished( bundle );
         }
+    }
 
-        // return new Promise<void>( ( resolve, reject ) => {
-        //     this.socket.on( 'bundle', async ( data : IBundleMessage ) => {
-        //         this.bundle = data;
-
-        //         let downloads : Promise<void>[] = [];
-
-        //         let queue = new Queue( this.concurrency, Infinity );
-
-        //         if ( proxy ) {
-        //             proxy.bundleStarted( this.bundle );
-        //         }
-
-        //         for ( let [ index, file ] of this.bundle.files.entries() ) {
-        //             downloads.push( 
-        //                 queue.add( 
-        //                     () => this.downloadFile( this.bundle, index, file, proxy )
-        //                 ) 
-        //             );
-        //         }
-
-        //         await Promise.all( downloads );
-                
-        //         if ( proxy ) {
-        //             proxy.bundleFinished( this.bundle );
-        //         }
-
-        //         resolve();
-        //     } );
-        // } );
+    async list ( path : string ) : Promise<IListMessage> {
+        return Sockets.emit<IListMessage>( this.socket, 'command', { name: 'list', path: path } );
     }
 }
 
 export interface IBundleMessage {
     id: string;
+    files: FileRecord[]
+}
+
+export interface IListMessage {
     files: FileRecord[]
 }

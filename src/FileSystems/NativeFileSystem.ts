@@ -21,7 +21,7 @@ export class NativeFileSystem implements FileSystem {
     }
 
     static async walk ( string : string ) : Promise<[ string, fs.Stats ][]> {
-        let stats = await Bundle.stats( string );
+        let stats = await NativeFileSystem.stats( string );
         
         if ( stats.isFile() ) {
             return Promise.resolve<[ string, fs.Stats ][]>( [ [ string, stats ] ] );
@@ -42,12 +42,12 @@ export class NativeFileSystem implements FileSystem {
         let records : FileRecord[] = [];
 
         for ( let target of files ) {
-            let expanded = await Bundle.walk( target );
+            let expanded = await NativeFileSystem.walk( target );
 
             let root = path.dirname( target );
 
             records.push( ...expanded.map( ( [ file, stats ] ) => {
-                return new FileRecord( PathUtils.normalize( path.relative( mainRoot || root, file ) ), PathUtils.normalize( path.relative( target, file ) ), stats );
+                return FileRecord.fromFsStats( PathUtils.normalize( path.relative( mainRoot || root, file ) ), PathUtils.normalize( path.relative( target, file ) ), stats );
             } ) );
         }
 
@@ -89,7 +89,7 @@ export class NativeFileSystem implements FileSystem {
         const buckets : FileRecord[] = [];
 
         for ( let child of children ) {
-            buckets.push( new FileRecord( PathUtils.join( target, child ), child, await fs.stat( path.join( root, child ) ) ) )
+            buckets.push( FileRecord.fromFsStats( PathUtils.join( target, child ), child, await fs.stat( path.join( root, child ) ) ) )
         }
 
         return buckets;

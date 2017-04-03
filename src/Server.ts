@@ -79,7 +79,7 @@ export class Server {
         this.devices.read( file ).pipe( res );
     }
 
-    onCommand ( command : CommandMessage ) {
+    async onCommand ( command : CommandMessage ) {
         if ( command.name === 'fetch' ) {
             const data = command as FetchCommandMessage;
 
@@ -88,6 +88,16 @@ export class Server {
             if ( this.targets.find( target => target === data.ip ) ) {
                 return this.fetch( data.path )
             }
+        } else if ( command.name === 'list' ) {
+            const data = command as ListCommandMessage;
+
+            console.log( 'receiving list for', data.path );
+
+            return {
+                files: await this.devices.list( data.path )
+            };
+        } else {
+            throw new Error( 'Invalid command: ' + command.name );
         }
     }
 
@@ -129,5 +139,10 @@ export interface CommandMessage {
 export interface FetchCommandMessage {
     name: 'fetch';
     ip: string;
+    path ?: string;
+}
+
+export interface ListCommandMessage {
+    name: 'list';
     path ?: string;
 }

@@ -6,37 +6,25 @@ import * as throttle from 'throttleit';
 import * as logUpdate from 'log-update';
 import * as program from 'commander';
 import * as internalIp from 'internal-ip';
+import * as TableLayout from 'table-layout';
 
 import { Server } from "../Server";
-import { Client } from "../Client";
+import { Client, IListMessage } from "../Client";
 import { FileRecord } from "../Bundle";
 import { Progress, ProgressBar, ProgressReporter, IProgressReporter } from "../ProgressReporter";
 
-// client.download( {
-//     fileStarted ( bundle : any, file : FileRecord ) {
-//         console.log( 'starting', chalk.green( file.target ) )
-//     },
-//     fileFinished ( bundle : any, file : FileRecord ) {
-//         console.log( 'finished', chalk.magenta( file.target ) )
-//     },
-//     fileProgress: throttle ( ( bundle : any, file : FileRecord, progress : Progress ) => {
-//         // console.log( 
-//         //     chalk.gray( file.source ),
-            
-//         // );
-//         console.log( 
-//             'fetching', ProgressBar.render( progress, 30 ),
-//             chalk.cyan( filesize( progress.done ) ) + chalk.grey( '/' ) + chalk.cyan( filesize( progress.total ) ),
-//             progress.timeRemaining == Infinity ? '--' : prettyMs( progress.timeRemaining * 1000 ), filesize( progress.speed ) + '/s',
-//             this
-//         );
-//     }, 500 )
-// } );
+export class View {
+    throw ( error : any ) : void {
+        console.error( error );
+    }
+}
 
-export class ProgressView {
+export class ProgressView extends View {
     mainAction : string;
     
     constructor ( mainAction : string ) {
+        super();
+
         this.mainAction = mainAction;
 
         this.fileProgress = throttle( this.fileProgress, 500 );
@@ -59,7 +47,7 @@ export class ProgressView {
     }
 }
 
-export class TTYProgressView {
+export class TTYProgressView extends View {
     current : Map<FileRecord, Progress> = new Map();
 
     progress : Progress;
@@ -67,6 +55,8 @@ export class TTYProgressView {
     mainAction : string;
 
     constructor ( mainAction : string ) {
+        super();
+
         this.mainAction = mainAction;
 
         this.render = throttle( this.render, 500 );
@@ -122,6 +112,25 @@ export class TTYProgressView {
     }
 }
 
+export class ListView extends View {
+    render ( list : IListMessage ) {
+        console.log( 'total', list.files.length );
+
+        const table = new TableLayout( list.files.map( record => {
+            const type : string = record.stats.type;
+
+            return {
+                size: typeof record.stats.size == 'number' ? filesize( record.stats.size ) : '--',
+                createdAt: record.stats.createdAt,
+                updatedAt: record.stats.updatedAt,
+                name: type == 'virtual' ? chalk.yellow( record.target ) : ( type == 'folder' ? chalk.blue( record.target ) : record.target ),
+            }
+        } ) );
+
+        console.log( table.toString() );
+    }
+}
+
 program
     .version('0.0.1')
 
@@ -141,22 +150,39 @@ program.command( 'fetch <server> [path]' )
     .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
     .option( '-i, --no-tty', 'Allows interactivity and colors/custom codes', x => !!x, true )
     .action( async ( server : string, path : string, options : any ) => {
-        const client = new Client( options.to || process.cwd(), 'http://' + server );
+        const client = new Client( 'http://' + server );
 
-        client.concurrency = +options.concurrency || 3;
+        let view : View & Partial<IProgressReporter> = options.tty ? new TTYProgressView( 'fetching' ) : new TTYProgressView( 'fetching' );
 
-        // console.log( options );
+        try {
+            client.concurrency = +options.concurrency || 3;
 
-        let view : Partial<IProgressReporter> = options.tty ? new TTYProgressView( 'fetching' ) : new TTYProgressView( 'fetching' );
+            await client.download( options.to || process.cwd(), path, view );
 
-        await client.download( path, view );
-
-        client.socket.close();
+        } catch ( error ) {
+            view.throw( error );
+        } finally {
+            client.socket.close();
+        }
     } );
 
 program.command( 'list <server> [path]' )
     .description( 'Query the server for a description of available resources at the specified path' )
+    .alias( 'ls' )
     .option( '-s, --size', 'Display sizes of directories' )
+    .action( async ( server : string, path : string, options : any ) => {
+        const client = new Client( 'http://' + server );
+
+        let view : ListView = new ListView();
+
+        try {
+            view.render( await client.list( path ) );
+        } catch ( error ) {
+            view.throw( error );
+        } finally {
+            client.socket.close();
+        }
+    } );
 
 program.on('*', function () {
     program.help()

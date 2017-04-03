@@ -88,7 +88,7 @@ export class DevicesManager implements FileSystem {
 
     async list ( path : string = '' ) : Promise<FileRecord[]> {
         if ( !path || path == '/' ) {
-            return Array.from( this.endpoints.keys() ).map( name => new FileRecord( name, name, null ) );
+            return Array.from( this.endpoints.keys() ).map( name => new FileRecord( name, name, { type: 'virtual' } ) );
         }
 
         let matches = this.locateAll( path );
