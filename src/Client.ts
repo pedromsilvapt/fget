@@ -7,6 +7,7 @@ import * as got from 'got';
 import { Server } from "./Server";
 import { FileRecord } from "./Bundle";
 import { ProgressReporter, IProgressReporter, Progress, ProgressBar } from "./ProgressReporter";
+import { Sockets } from "./Sockets";
 
 
 export class Client {
@@ -29,7 +30,7 @@ export class Client {
     }
 
     async downloadFile ( bundle : IBundleMessage, fileId : number, file : FileRecord, reporter ?: ProgressReporter ) {
-        let target = path.join( this.target, file.target );
+        let target = path.join( this.target, file.target || path.basename( file.source ) );
 
         await fs.ensureDir( path.dirname( target ) );
 
@@ -70,31 +71,59 @@ export class Client {
 
         this.socket.emit( 'command', { name: 'fetch', ip: internalIp.v4(), path: path } );
 
-        this.socket.on( 'bundle', async ( data : IBundleMessage ) => {
-            this.bundle = data;
+        let bundle = await Sockets.emit<IBundleMessage>( this.socket, 'command', { name: 'fetch', ip: internalIp.v4(), path: path } );
 
-            let downloads : Promise<void>[] = [];
+        let downloads : Promise<void>[] = [];
 
-            let queue = new Queue( this.concurrency, Infinity );
+        let queue = new Queue( this.concurrency, Infinity );
 
-            if ( proxy ) {
-                proxy.bundleStarted( this.bundle );
-            }
+        if ( proxy ) {
+            proxy.bundleStarted( bundle );
+        }
 
-            for ( let [ index, file ] of this.bundle.files.entries() ) {
-                downloads.push( 
-                    queue.add( 
-                        () => this.downloadFile( this.bundle, index, file, proxy )
-                    ) 
-                );
-            }
+        for ( let [ index, file ] of bundle.files.entries() ) {
+            downloads.push( 
+                queue.add( 
+                    () => this.downloadFile( bundle, index, file, proxy )
+                ) 
+            );
+        }
 
-            await Promise.all( downloads );
-            
-            if ( proxy ) {
-                proxy.bundleFinished( this.bundle );
-            }
-        } );
+        await Promise.all( downloads );
+        
+        if ( proxy ) {
+            proxy.bundleFinished( this.bundle );
+        }
+
+        // return new Promise<void>( ( resolve, reject ) => {
+        //     this.socket.on( 'bundle', async ( data : IBundleMessage ) => {
+        //         this.bundle = data;
+
+        //         let downloads : Promise<void>[] = [];
+
+        //         let queue = new Queue( this.concurrency, Infinity );
+
+        //         if ( proxy ) {
+        //             proxy.bundleStarted( this.bundle );
+        //         }
+
+        //         for ( let [ index, file ] of this.bundle.files.entries() ) {
+        //             downloads.push( 
+        //                 queue.add( 
+        //                     () => this.downloadFile( this.bundle, index, file, proxy )
+        //                 ) 
+        //             );
+        //         }
+
+        //         await Promise.all( downloads );
+                
+        //         if ( proxy ) {
+        //             proxy.bundleFinished( this.bundle );
+        //         }
+
+        //         resolve();
+        //     } );
+        // } );
     }
 }
 

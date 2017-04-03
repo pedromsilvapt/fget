@@ -2,11 +2,44 @@ import * as walk from 'walk';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as isFile from 'is-file';
+import { PathUtils } from "./PathUtils";
 
 export class FileRecord {
     source: string;
     target: string;
     stats : fs.Stats;
+
+    constructor ( source : string, target : string, stats : fs.Stats ) {
+        this.source = source;
+        this.target = target;
+        this.stats = stats;
+    }
+
+    clone () {
+        return new FileRecord( this.source, this.target, this.stats );
+    }
+
+    fold ( changeTarget : boolean = true ) : FileRecord {
+        // this.target = this.target.slice( this.target.indexOf( '/' ) );
+        if ( changeTarget ) {        
+            this.target = PathUtils.fold( this.target );
+        }
+
+        this.source = PathUtils.fold( this.source );
+
+        return this;
+    }
+
+    unfold ( segment : string, changeTarget : boolean = true ) : FileRecord {
+        // this.target = path.join( segment, this.target );
+        if ( changeTarget ) {
+            this.target = PathUtils.unfold( this.target, segment );
+        }
+        
+        this.source = PathUtils.unfold( this.source, segment );
+
+        return this;
+    }
 }
 
 export class Bundle {
@@ -52,11 +85,7 @@ export class Bundle {
             let root = mainRoot || path.dirname( file );
 
             records.push( ...expanded.map( ( [ file, stats ] ) => {
-                return {
-                    source: file,
-                    target: path.relative( root, file ),
-                    stats: stats
-                };
+                return new FileRecord( file, path.relative( root, file ), stats );
             } ) );
         }
 

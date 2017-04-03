@@ -10,7 +10,7 @@ import * as internalIp from 'internal-ip';
 import { Server } from "../Server";
 import { Client } from "../Client";
 import { FileRecord } from "../Bundle";
-import { Progress, ProgressBar } from "../ProgressReporter";
+import { Progress, ProgressBar, ProgressReporter, IProgressReporter } from "../ProgressReporter";
 
 // client.download( {
 //     fileStarted ( bundle : any, file : FileRecord ) {
@@ -34,6 +34,32 @@ import { Progress, ProgressBar } from "../ProgressReporter";
 // } );
 
 export class ProgressView {
+    mainAction : string;
+    
+    constructor ( mainAction : string ) {
+        this.mainAction = mainAction;
+
+        this.fileProgress = throttle( this.fileProgress, 500 );
+    }
+
+    fileStarted ( bundle : any, file : FileRecord ) {
+        console.log( 'starting', chalk.green( file.target ) )
+    }
+
+    fileFinished ( bundle : any, file : FileRecord ) {
+        console.log( 'finished', chalk.magenta( file.target ) )
+    }
+
+    fileProgress ( bundle : any, file : FileRecord, progress : Progress ) {
+        console.log( 
+            this.mainAction, ProgressBar.render( progress, 30 ),
+            chalk.cyan( filesize( progress.done ) ) + chalk.grey( '/' ) + chalk.cyan( filesize( progress.total ) ),
+            progress.timeRemaining == Infinity ? '--' : prettyMs( progress.timeRemaining * 1000 ), filesize( progress.speed ) + '/s',
+        );
+    }
+}
+
+export class TTYProgressView {
     current : Map<FileRecord, Progress> = new Map();
 
     progress : Progress;
@@ -113,13 +139,19 @@ program.command( 'fetch <server> [path]' )
     .option( '-c, --concurrency <concurrency>', 'Maximum number of concurrent files to download' )
     .option( '-t, --to <target>', 'Specify a custom target folder to where the files will be transferred. Defaults to the current working dir' )
     .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
-    .option( '-i, --tty', 'Allows interactivity and colors/custom codes' )
-    .action( ( server : string, path : string, options : any ) => {
-        const client = new Client( options.target || process.cwd(), 'http://' + server );
+    .option( '-i, --no-tty', 'Allows interactivity and colors/custom codes', x => !!x, true )
+    .action( async ( server : string, path : string, options : any ) => {
+        const client = new Client( options.to || process.cwd(), 'http://' + server );
 
         client.concurrency = +options.concurrency || 3;
 
-        client.download( path, new ProgressView( 'fetching' ) );
+        // console.log( options );
+
+        let view : Partial<IProgressReporter> = options.tty ? new TTYProgressView( 'fetching' ) : new TTYProgressView( 'fetching' );
+
+        await client.download( path, view );
+
+        client.socket.close();
     } );
 
 program.command( 'list <server> [path]' )

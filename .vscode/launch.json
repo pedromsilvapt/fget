@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Launch Program",
             "program": "${file}",
-            "outFiles": []
+            "outFiles": [ "lib/**/*.js" ]
         },
         {
             "type": "node",

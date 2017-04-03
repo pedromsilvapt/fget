@@ -4,33 +4,66 @@ import * as http from 'http';
 import * as express from 'express';
 import * as uid from 'uid';
 import * as fs from 'fs';
+import * as path from 'path';
 import { Bundle } from "./Bundle";
+import { DevicesManager } from "./FileSystems/DevicesManager";
+import { FileSystem } from "./FileSystems/FileSystem";
+import { NativeFileSystem } from "./FileSystems/NativeFileSystem";
+import { PathUtils } from "./PathUtils";
+import { Sockets } from "./Sockets";
 
 export class Server {
-    files : string[];
     targets : string[];
+
+    devices : DevicesManager;
 
     port : number;
 
     bundles : Map<string, Bundle> = new Map();
 
     constructor ( files : string[], targets : string[] ) {
-        this.files = files;
         this.targets = targets;
+        
+        this.devices = new DevicesManager();
+
+        this.mount( files );
     }
 
-    async sendAll ( socket : SocketIO.Socket, path ?: string ) {
+    mount ( paths : string | string[] ) : this;
+    mount ( endpoint : string, paths : string | string[] ) : this;
+    mount ( endpoint : string, fs : FileSystem ) : this;
+    mount ( endpoint : string | string[], fs ?: FileSystem | string | string[] ) : this {
+        if ( !fs ) {
+            return this.mount( '', endpoint );
+        }
+
+        endpoint = endpoint as string;
+
+        if ( typeof fs === 'string' ) {
+            fs = [ fs ];
+        }
+
+        if ( fs instanceof Array ) {
+            for ( let target of fs ) {
+                this.mount( PathUtils.join( endpoint, path.basename( target ) ), new NativeFileSystem( target ) );
+            }
+
+            return this;
+        }
+
+        this.devices.mount( endpoint, fs );
+
+        return this;
+    }
+
+    async fetch ( path ?: string ) {
         const id : string = uid( 32 );
 
-        const bundle = new Bundle( id, await Bundle.expand( this.files ) );
-
-        if ( path ) {
-            bundle.files = bundle.files.filter( file => file.source.startsWith( path ) );
-        }
+        const bundle = new Bundle( id, await this.devices.fetch( path ) );
 
         this.bundles.set( id, bundle );
 
-        socket.emit( 'bundle', bundle.toJSON() );
+        return bundle.toJSON();
     }
 
     async sendFile ( req : express.Request, res : express.Response ) {
@@ -41,7 +74,21 @@ export class Server {
 
         const file = bundle.files[ fileId ];
 
-        res.download( file.source );
+        res.attachment( path.basename( file.target ) );
+
+        this.devices.read( file ).pipe( res );
+    }
+
+    onCommand ( command : CommandMessage ) {
+        if ( command.name === 'fetch' ) {
+            const data = command as FetchCommandMessage;
+
+            console.log( 'receiving connection from', data.ip );
+
+            if ( this.targets.find( target => target === data.ip ) ) {
+                return this.fetch( data.path )
+            }
+        }
     }
 
     async listen ( port : number = 8099 ) {
@@ -64,17 +111,11 @@ export class Server {
         io.on('connection', socket => {
             socket.emit( 'news', { hello: 'world' } );
 
-            socket.on( 'command', ( command : CommandMessage ) => {
-                if ( command.name === 'fetch' ) {
-                    const data = command as FetchCommandMessage;
+            Sockets.on( socket, 'command', this.onCommand.bind( this ) );
 
-                    console.log( 'receiving connection from', data.ip );
-
-                    if ( this.targets.find( target => target === data.ip ) ) {
-                        this.sendAll( socket, data.path ).catch( error => console.error( error ) );
-                    }
-                }
-            } );
+            // socket.on( 'command', ( command : CommandMessage ) => {
+                
+            // } );
         } );
 
         server.listen( port );
