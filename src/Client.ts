@@ -1,5 +1,4 @@
 import * as SocketClient from 'socket.io-client';
-import * as internalIp from 'internal-ip';
 import * as Queue from 'promise-queue';
 import * as fs from 'fs-promise';
 import * as path from 'path';
@@ -8,6 +7,7 @@ import { Server } from "./Server";
 import { FileRecord } from "./Bundle";
 import { ProgressReporter, IProgressReporter, Progress, ProgressBar } from "./ProgressReporter";
 import { Sockets } from "./Sockets";
+import { PathUtils } from "./PathUtils";
 
 
 export class Client {
@@ -17,10 +17,21 @@ export class Client {
 
     concurrency : number = 1;
 
+    workingDirectory : string = '/';
+
     constructor ( source : string ) {
         this.source = source;
 
         this.socket = SocketClient( source );
+    }
+
+    resolve ( path : string ) {
+        path = ( path || '' );
+        if ( path.startsWith( '/' ) ) {
+            return path;
+        } else {
+            return PathUtils.resolve( PathUtils.join( this.workingDirectory, path ) );
+        }
     }
 
     async downloadFile ( targetFolder : string, bundle : IBundleMessage, fileId : number, file : FileRecord, reporter ?: ProgressReporter ) {
@@ -63,9 +74,9 @@ export class Client {
             proxy = new ProgressReporter( reporter );
         }
 
-        // this.socket.emit( 'command', { name: 'fetch', ip: internalIp.v4(), path: path } );
+        path = this.resolve( path );
 
-        let bundle = await Sockets.emit<IBundleMessage>( this.socket, 'command', { name: 'fetch', ip: internalIp.v4(), path: path } );
+        let bundle = await Sockets.emit<IBundleMessage>( this.socket, 'command', { name: 'fetch', path: path } );
 
         let downloads : Promise<void>[] = [];
 
@@ -91,6 +102,8 @@ export class Client {
     }
 
     async list ( path : string ) : Promise<IListMessage> {
+        path = this.resolve( path );
+
         return Sockets.emit<IListMessage>( this.socket, 'command', { name: 'list', path: path } );
     }
 }

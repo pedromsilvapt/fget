@@ -44,7 +44,35 @@ export class PathUtils {
         return PathUtils.join( segment, path );
     }
 
-    static dirname ( string : string ) {
+    static dirname ( string : string ) : string {
         return path.dirname( string );
+    }
+
+    static resolve ( string : string ) : string {
+        let parts = PathUtils.explode( string );
+
+        let back : number = 0;
+        let regenerated : string[] = [];
+
+        for ( let part of parts ) {
+            if ( part === '..' ) {
+                if ( !regenerated.length || back > 0 ) {
+                    back += 1;
+                }
+                
+                if ( regenerated.length ) {
+                    regenerated.pop();
+                }
+            } else if ( part !== '.' ) {
+                if ( back > 0 ) {
+                    back -= 1;
+                }
+
+                regenerated.push( part );
+            }
+        }
+
+        return '../'.repeat( back ) + regenerated.join( '/' );
+        // return regenerated.join( '/' );
     }
 }

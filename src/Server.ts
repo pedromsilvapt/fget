@@ -11,8 +11,10 @@ import { FileSystem } from "./FileSystems/FileSystem";
 import { NativeFileSystem } from "./FileSystems/NativeFileSystem";
 import { PathUtils } from "./PathUtils";
 import { Sockets } from "./Sockets";
+import { InternetProtocol } from "./InternetProtocol";
+import { EventEmitter } from "events";
 
-export class Server {
+export class Server extends EventEmitter {
     targets : string[];
 
     devices : DevicesManager;
@@ -22,6 +24,8 @@ export class Server {
     bundles : Map<string, Bundle> = new Map();
 
     constructor ( files : string[], targets : string[] ) {
+        super();
+
         this.targets = targets;
         
         this.devices = new DevicesManager();
@@ -79,22 +83,14 @@ export class Server {
         this.devices.read( file ).pipe( res );
     }
 
-    async onCommand ( command : CommandMessage ) {
+    async onCommand ( socket : SocketIO.Socket, command : CommandMessage ) {
+        this.emit( 'command', command, socket );
+
         if ( command.name === 'fetch' ) {
-            const data = command as FetchCommandMessage;
-
-            console.log( 'receiving connection from', data.ip );
-
-            if ( this.targets.find( target => target === data.ip ) ) {
-                return this.fetch( data.path )
-            }
+            return this.fetch( command.path );
         } else if ( command.name === 'list' ) {
-            const data = command as ListCommandMessage;
-
-            console.log( 'receiving list for', data.path );
-
             return {
-                files: await this.devices.list( data.path )
+                files: await this.devices.list( command.path )
             };
         } else {
             throw new Error( 'Invalid command: ' + command.name );
@@ -119,26 +115,23 @@ export class Server {
         const io = SocketServer( server );
 
         io.on('connection', socket => {
-            socket.emit( 'news', { hello: 'world' } );
+            var clientIp = socket.request.connection.remoteAddress;
 
-            Sockets.on( socket, 'command', this.onCommand.bind( this ) );
-
-            // socket.on( 'command', ( command : CommandMessage ) => {
-                
-            // } );
+            if ( InternetProtocol.allowed( clientIp, this.targets ) ) {
+                Sockets.on( socket, 'command', this.onCommand.bind( this, socket ) );
+            } else {
+                socket.disconnect();
+            }
         } );
 
         server.listen( port );
     }
 }
 
-export interface CommandMessage {
-    name: string;
-}
+export type CommandMessage = FetchCommandMessage | ListCommandMessage;
 
 export interface FetchCommandMessage {
     name: 'fetch';
-    ip: string;
     path ?: string;
 }
 

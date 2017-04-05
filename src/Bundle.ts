@@ -20,8 +20,8 @@ export class FileRecord {
         return new FileRecord( source, target, {
             type: stats.isFile() ? 'file' : 'folder',
             size: stats.size,
-            updatedAt: stats.mtime.toUTCString() as any as number,
-            createdAt: stats.atime.toUTCString() as any as number
+            updatedAt: stats.mtime.valueOf() as any as number,
+            createdAt: stats.atime.valueOf() as any as number
         } );
     }
 

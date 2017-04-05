@@ -1,9 +1,10 @@
-import { FileRecord, Bundle } from "../Bundle";
+import { FileRecord, Bundle } from '../Bundle';
 import * as path from 'path';
 import * as fs from 'fs-promise';
 import * as walk from 'walk';
-import { FileSystem } from "./FileSystem";
-import { PathUtils } from "../PathUtils";
+import * as pathIsInside from 'path-is-inside';
+import { FileSystem } from './FileSystem';
+import { PathUtils } from '../PathUtils';
 
 export class NativeFileSystem implements FileSystem {
     root : string;
@@ -54,9 +55,14 @@ export class NativeFileSystem implements FileSystem {
         return records;
     }
 
-    static compose ( root : string, target : string ) : string {
-        // TODO Security vulnerability! Take care of possible multiple unauthorized ../ accessing parent folders        
-        return path.join( root, target );
+    static toAbsolute ( root : string, target : string ) : string {
+        const absolute = path.resolve( path.join( root, target ) );
+
+        if ( !pathIsInside( absolute, root ) ) {
+            throw new Error( `Trying to access outside of bounds.` );
+        }
+
+        return absolute;
     }
 
     constructor ( root : string ) {
@@ -64,7 +70,7 @@ export class NativeFileSystem implements FileSystem {
     }
 
     read ( file : FileRecord ) : fs.ReadStream {
-        return fs.createReadStream( NativeFileSystem.compose( this.root, file.source ) );
+        return fs.createReadStream( NativeFileSystem.toAbsolute( this.root, file.source ) );
     }
 
     async fetch ( path ?: string | string[] ) : Promise<FileRecord[]> {
@@ -74,7 +80,7 @@ export class NativeFileSystem implements FileSystem {
             path = [ path ];
         }
 
-        path = path.map( path => NativeFileSystem.compose( this.root, path ) );
+        path = path.map( path => NativeFileSystem.toAbsolute( this.root, path ) );
 
         return NativeFileSystem.expand( path, this.root );
     }
@@ -82,7 +88,7 @@ export class NativeFileSystem implements FileSystem {
     async list ( target : string = '' ) : Promise<FileRecord[]> {
         target = target || '';
         
-        const root = NativeFileSystem.compose( this.root, target );
+        const root = NativeFileSystem.toAbsolute( this.root, target );
 
         const children = await fs.readdir( root );
 
