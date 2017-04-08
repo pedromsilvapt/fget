@@ -16,23 +16,9 @@ export class ListCommand {
 
         vorpal.command( 'list [path]', 'Query the server for a description of available resources at the specified path' )
             .autocomplete( AutoComplete( client, record => record.stats.type !== 'file' ) )
-            // .autocomplete( async ( partial : string, callback : Function ) => {
-            //     const parts = PathUtils.explode( partial );
-
-            //     const len = parts.length;
-
-            //     const results = await client.list( PathUtils.join( ...parts.slice( 0, len - 1 ) ) ).catch( () => ( { files: [] } as IListMessage ) );
-
-            //     let files = results.files
-            //         .filter( record => record.stats.type !== 'file' )
-            //         .filter( record => record.target.indexOf( parts[ len - 1 ] ) >= 0 )
-            //         .map( r => r.target + '/' );
-
-            //     callback( files )
-            // } )
             .alias( 'ls' )
             .option( '-s, --size', 'Display sizes of directories' )
-            .action( async function ( args : any, callback : Function ) {
+            .action( async function ( args : any ) {
                 let view : ListView = new ListView( this );
 
                 try {
@@ -40,8 +26,6 @@ export class ListCommand {
                 } catch ( error ) {
                     view.throw( error );
                 }
-
-                callback();
             } );
     }
 }

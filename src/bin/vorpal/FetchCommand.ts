@@ -6,6 +6,7 @@ import { View, ILogger, AutoComplete } from "./Common";
 import * as throttle from 'throttleit';
 import * as logUpdate from 'log-update';
 import * as chalk from 'chalk';
+import * as path from 'path';
 import * as filesize from 'filesize';
 import * as prettyMs from 'pretty-ms';
 
@@ -22,20 +23,7 @@ export class FetchCommand {
             .option( '-t, --to <target>', 'Specify a custom target folder to where the files will be transferred. Defaults to the current working dir' )
             .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
             .autocomplete( AutoComplete( client ) )
-            // .autocomplete( async ( partial : string, callback : Function ) => {
-            //     const parts = PathUtils.explode( partial );
-
-            //     const len = parts.length;
-
-            //     const results = await client.list( PathUtils.join( ...parts.slice( 0, len - 1 ) ) ).catch( () => ( { files: [] } as IListMessage ) );
-
-            //     let files = results.files
-            //         .filter( record => record.target.indexOf( parts[ len - 1 ] ) >= 0 )
-            //         .map( r => r.target + ( r.target != 'file' ? '/' : '' ) );
-
-            //     callback( files )
-            // } )
-            .action( async function ( args : any, callback : Function ) {
+            .action( async function ( args : any ) {
                 let view : View & Partial<IProgressReporter> = args.tty ? new TTYProgressView( 'fetching', vorpal.ui.redraw ) : new TTYProgressView( 'fetching', vorpal.ui.redraw );
 
                 try {
@@ -44,14 +32,14 @@ export class FetchCommand {
                     view.throw( error );
                 }
 
-                callback();
+                await new Promise( resolve => setTimeout( resolve, 500 ) );
             } );
     }
 
     async execute ( view : View & Partial<IProgressReporter>, command : any, args : any ) {
         this.client.concurrency = +args.options.concurrency || 1;
 
-        await this.client.download( args.options.to || process.cwd(), args.path, view );
+        await this.client.download( this.client.resolveLocal( args.options.to ), args.path, view );
     }
 }
 
@@ -92,6 +80,8 @@ export class TTYProgressView extends View {
 
     logger : any;
 
+    finished : boolean = false;
+
     constructor ( mainAction : string, logger ?: any ) {
         super( logger );
 
@@ -118,7 +108,11 @@ export class TTYProgressView extends View {
         this.render();
     }
 
-    bundleFinish () {
+    bundleFinished () {
+        this.renderSync();
+
+        this.finished = true;
+
         ( this.logger || logUpdate ).done();
     }
 
@@ -130,12 +124,16 @@ export class TTYProgressView extends View {
         ].join( ' ' );
     }
 
-    render () : void {
+    renderSync () : void {
+        if ( this.finished ) {
+            return;
+        }
+
         let lines : string[] = [];
 
         for ( let [ file, progress ] of this.current ) {
             lines.push(
-                chalk.green( file.target ),
+                chalk.green( file.target || path.basename( file.source ) ),
                 this.renderProgress( this.mainAction, progress ),
                 ''
             );
@@ -147,5 +145,9 @@ export class TTYProgressView extends View {
         }
 
         ( this.logger || logUpdate )( lines.join( '\n' ) );
+    }
+
+    render () : void {
+        this.renderSync();
     }
 }

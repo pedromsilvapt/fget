@@ -22,10 +22,6 @@ export class PathUtils {
     static explode ( path : string, limit : number = Infinity ) : string[] {
         path = PathUtils.normalize( path );
 
-        if ( path.startsWith( '/' ) ) {
-            path = path.slice( 1 );
-        }
-
         const parts = path.split( '/' );
 
         if ( parts.length <= limit ) {

@@ -1,9 +1,10 @@
 {
   "name": "fget-cli",
   "version": "0.0.1",
-  "description": "",
+  "description": "Simple cli tool that allows to share files between multiple computers over LAN or the Internet",
   "main": "index.js",
   "repository": "scorchpt/fget",
+  "keywords": [ "sockets", "share", "files", "cli", "transfer", "lan", "internet", "upload", "download" ],
   "dependencies": {
     "chalk": "^1.1.3",
     "commander": "^2.9.0",
@@ -35,9 +36,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
+  "author": "Pedro M. Silva <pemiolsi@hotmail.com>",
   "license": "ISC",
-  "preferGlobal": "true",
+  "preferGlobal": true,
   "bin": {
     "fget": "lib/bin/cmd.js"
   },

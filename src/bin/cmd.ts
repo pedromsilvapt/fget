@@ -14,6 +14,7 @@ import { CdCommand } from "./vorpal/CdCommand";
 import { FetchCommand, TTYProgressView } from "./vorpal/FetchCommand";
 import { ListCommand, ListView } from "./vorpal/ListCommand";
 import { View } from "./vorpal/Common";
+import { CldCommand } from "./vorpal/CldCommand";
 
 program
     .version('0.0.1')
@@ -96,6 +97,7 @@ program.command( 'connect <server> [path]' )
         const vorpal = Vorpal();
 
         new CdCommand( client, vorpal );
+        new CldCommand( client, vorpal );
         new FetchCommand( client, vorpal );
         new ListCommand( client, vorpal );
 

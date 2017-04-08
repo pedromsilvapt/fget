@@ -9,7 +9,7 @@ export interface Predicate<T> {
 export function AutoComplete( client: Client, predicate ?: Predicate<FileRecord> ) {
     return async ( partial : string, callback : Function ) => {
         const parts = PathUtils.explode( partial );
-
+        
         const len = parts.length;
 
         const results = await client.list( PathUtils.join( ...parts.slice( 0, len - 1 ) ) ).catch( () => ( { files: [] } as IListMessage ) );
@@ -17,7 +17,7 @@ export function AutoComplete( client: Client, predicate ?: Predicate<FileRecord>
         let files = results.files
             .filter( record => predicate ? predicate( record ) : true )
             .filter( record => record.target.indexOf( parts[ len - 1 ] ) >= 0 )
-            .map( r =>  r.target + ( r.target != 'file' ? '/' : '' ) );
+            .map( r =>  r.target + ( r.stats.type != 'file' ? '/' : '' ) );
 
         callback( files );
     };

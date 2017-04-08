@@ -19,23 +19,40 @@ export class Client {
 
     workingDirectory : string = '/';
 
+    workingLocalDirectory : string = process.cwd();
+
     constructor ( source : string ) {
         this.source = source;
 
         this.socket = SocketClient( source );
     }
 
-    resolve ( path : string ) {
-        path = ( path || '' );
+    resolve ( path : string = '' ) {
+        if ( !path ) {
+            return this.workingDirectory;
+        }
+
         if ( path.startsWith( '/' ) ) {
-            return path;
+            return PathUtils.normalize( path );
         } else {
             return PathUtils.resolve( PathUtils.join( this.workingDirectory, path ) );
         }
     }
 
+    resolveLocal ( string : string = '' ) {
+        if ( !string ) {
+            return this.workingLocalDirectory;
+        }
+
+        if ( path.isAbsolute( string ) ) {
+            return path.normalize( string );
+        } else {
+            return path.resolve( path.join( this.workingLocalDirectory, string ) );
+        }
+    }
+
     async downloadFile ( targetFolder : string, bundle : IBundleMessage, fileId : number, file : FileRecord, reporter ?: ProgressReporter ) {
-        let target = path.join( targetFolder, file.target || path.basename( file.source ) );
+        let target = path.join( this.resolveLocal( targetFolder ), file.target || path.basename( file.source ) );
 
         await fs.ensureDir( path.dirname( target ) );
 
@@ -62,6 +79,7 @@ export class Client {
                 if ( reporter ) {
                     reporter.fileFinished( bundle, file );
                 }
+
                 resolve( target );
             } );
         } );
