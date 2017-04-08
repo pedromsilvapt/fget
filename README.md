@@ -38,9 +38,30 @@ When in doubt of what will be downloaded, the `list` command is available.
 fget list localhost:8099
 fget list localhost:8099 "Folder/Subfolder"
 ```
+# Interactive Mode
+Sometimes it might be desirable to perform several sequential actions in the same server. As such, it can be contrived to use the main commands like fetch, list and find, having to repeat the server ip in all commands. As such, the client has an interactive version that launches a virtual shell that remembers the state between commands.
+
+```shell
+fget connect localhost:8099
+```
+This will launch the virtual shell. The commands behave in a similar way to the native ones, minus the server argument. The shell also has the notion of a working (remote) directory and a working local directory, both can be shown/changed with the commands `cd` and `cld`, respectively.
+
+Any relative path used in the fetch, list and find commands will take those working directories into account.
+
+```shell
+fget~/> cd Folder
+fget~/Folder> ls
+```
+
+Is the equivalent of:
+
+```shell
+fget~/> ls Folder
+```
 
 # Help
 Run --help in order to get a comprehensive list of all available commands and options.
+
 
 ```shell
 fget --help
