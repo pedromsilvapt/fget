@@ -12,7 +12,7 @@ import { Progress, ProgressBar, ProgressReporter, IProgressReporter } from "../P
 import { InternetProtocol } from "../InternetProtocol";
 import { PathUtils } from "../PathUtils";
 import { CdCommand } from "./vorpal/CdCommand";
-import { FetchCommand, TTYProgressView } from "./vorpal/FetchCommand";
+import { FetchCommand, TTYProgressView, ProgressView } from "./vorpal/FetchCommand";
 import { ListCommand, ListView } from "./vorpal/ListCommand";
 import { View } from "./vorpal/Common";
 import { CldCommand } from "./vorpal/CldCommand";
@@ -57,16 +57,16 @@ program.command( 'fetch <server> [path]' )
     .option( '-t, --to <target>', 'Specify a custom target folder to where the files will be transferred. Defaults to the current working dir' )
     .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
     .option( '-i, --no-tty', 'Allows interactivity and colors/custom codes', x => !!x, true )
-    .option( '--transport', 'Specify a custom transport (defaults to http)' )
+    .option( '--transport <transport>', 'Specify a custom transport (defaults to http)' )
     .action( async ( server : string, path : string, options : any ) => {
         const client = new Client( 'http://' + server );
 
-        let view : View & Partial<IProgressReporter> = options.tty ? new TTYProgressView( 'fetching', logUpdate ) : new TTYProgressView( 'fetching', logUpdate );
+        let view : View & Partial<IProgressReporter> = options.tty ? new TTYProgressView( 'fetching', logUpdate ) : new ProgressView( 'fetching', console );
 
         try {
             client.concurrency = +options.concurrency || 1;
 
-            await client.download( options.to || process.cwd(), path, view );
+            await client.download( options.to || process.cwd(), path, options.transport, view );
 
         } catch ( error ) {
             view.throw( error );

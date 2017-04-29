@@ -22,9 +22,17 @@ export class FetchCommand {
             .option( '-c, --concurrency <concurrency>', 'Maximum number of concurrent files to download' )
             .option( '-t, --to <target>', 'Specify a custom target folder to where the files will be transferred. Defaults to the current working dir' )
             .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
+            .option( '-i, --no-tty', 'Allows interactivity and colors/custom codes' )
+            .option( '--transport <transport>', 'Specify a custom transport (defaults to http)' )
             .autocomplete( AutoComplete( client ) )
             .action( async function ( args : any ) {
-                let view : View & Partial<IProgressReporter> = args.tty ? new TTYProgressView( 'fetching', vorpal.ui.redraw ) : new TTYProgressView( 'fetching', vorpal.ui.redraw );
+                if ( !( 'tty' in args ) ) {
+                    args.tty = true;
+                }
+                
+                let view : View & Partial<IProgressReporter> = args.options.tty ? new TTYProgressView( 'fetching', vorpal.ui.redraw ) : new ProgressView( 'fetching', this );
+
+                console.log( args.options );
 
                 try {
                     await self.execute( view, this, args );
@@ -39,7 +47,7 @@ export class FetchCommand {
     async execute ( view : View & Partial<IProgressReporter>, command : any, args : any ) {
         this.client.concurrency = +args.options.concurrency || 1;
 
-        await this.client.download( this.client.resolveLocal( args.options.to ), args.path, 'http', view );
+        await this.client.download( this.client.resolveLocal( args.options.to ), args.path, args.options.transport, view );
     }
 }
 
