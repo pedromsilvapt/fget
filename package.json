@@ -1,6 +1,6 @@
 {
   "name": "fget-cli",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Simple cli tool that allows to share files between multiple computers over LAN or the Internet",
   "main": "index.js",
   "repository": "scorchpt/fget",
