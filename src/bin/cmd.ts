@@ -3,6 +3,7 @@ import * as chalk from 'chalk';
 import * as program from 'commander';
 import * as Vorpal from 'vorpal';
 import * as logUpdate from 'log-update';
+import * as pkginfo from 'pkginfo';
 
 import { Server, CommandMessage } from "../Server";
 import { Client, IListMessage } from "../Client";
@@ -16,8 +17,10 @@ import { ListCommand, ListView } from "./vorpal/ListCommand";
 import { View } from "./vorpal/Common";
 import { CldCommand } from "./vorpal/CldCommand";
 
+const pkg = pkginfo.read( module ).package;
+
 program
-    .version('0.0.1')
+    .version( pkg.version )
 
 program.command( 'serve <files...>' )
     .description( 'send a file/folder' )
@@ -54,6 +57,7 @@ program.command( 'fetch <server> [path]' )
     .option( '-t, --to <target>', 'Specify a custom target folder to where the files will be transferred. Defaults to the current working dir' )
     .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
     .option( '-i, --no-tty', 'Allows interactivity and colors/custom codes', x => !!x, true )
+    .option( '--transport', 'Specify a custom transport (defaults to http)' )
     .action( async ( server : string, path : string, options : any ) => {
         const client = new Client( 'http://' + server );
 

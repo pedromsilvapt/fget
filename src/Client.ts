@@ -8,6 +8,9 @@ import { FileRecord } from "./Bundle";
 import { ProgressReporter, IProgressReporter, Progress, ProgressBar } from "./ProgressReporter";
 import { Sockets } from "./Sockets";
 import { PathUtils } from "./PathUtils";
+import { ClientTransportsManager } from "./Transports/TransportsManager";
+import { ClientTransport } from "./Transports/Transport";
+import { HttpClientTransport } from "./Transports/HttpTransport";
 
 
 export class Client {
@@ -21,10 +24,18 @@ export class Client {
 
     workingLocalDirectory : string = process.cwd();
 
+    transports : ClientTransportsManager = new ClientTransportsManager();
+
     constructor ( source : string ) {
         this.source = source;
 
         this.socket = SocketClient( source );
+
+        this.transports.add( 'http', new HttpClientTransport() );
+
+        this.transports.setup( this );
+
+        this.transports.defaultTransport = 'http';
     }
 
     resolve ( path : string = '' ) {
@@ -51,19 +62,17 @@ export class Client {
         }
     }
 
-    async downloadFile ( targetFolder : string, bundle : IBundleMessage, fileId : number, file : FileRecord, reporter ?: ProgressReporter ) {
+    async downloadFile ( targetFolder : string, bundle : IBundleMessage, file : FileRecord, transport : ClientTransport, reporter ?: ProgressReporter ) {
         let target = path.join( this.resolveLocal( targetFolder ), file.target || path.basename( file.source ) );
 
         await fs.ensureDir( path.dirname( target ) );
 
-        let source = this.source + '/bundles/' + bundle.id + '/'  + fileId;
-
-        return new Promise( ( resolve, reject ) => {
+        return new Promise( async ( resolve, reject ) => {
             if ( reporter ) {
                 reporter.fileStarted( bundle, file );
             }
 
-            got.stream( source ).on( 'data', ( data : any ) => {
+            ( await transport.fetch( bundle, file ) ).on( 'data', ( data : any ) => {
                 let length : number = 0;
 
                 if ( typeof data === 'string' ) {
@@ -85,16 +94,22 @@ export class Client {
         } );
     }
 
-    async download ( target : string, path : string = null, reporter ?: Partial<IProgressReporter> ) {
+    async download ( target : string, path : string = null, transportName ?: string, reporter ?: Partial<IProgressReporter> ) {
         let proxy : ProgressReporter;
 
         if ( reporter ) {
             proxy = new ProgressReporter( reporter );
         }
+        
+        const transport = this.transports.getOrDefault( transportName );
+
+        if ( !transport ) {
+            throw new Error( `Could not find a transport named "${ transportName }"` );
+        }
 
         path = this.resolve( path );
 
-        let bundle = await Sockets.emit<IBundleMessage>( this.socket, 'command', { name: 'fetch', path: path } );
+        let bundle = await Sockets.emit<IBundleMessage>( this.socket, 'command', { name: 'fetch', path: path, transport: transportName } );
 
         let downloads : Promise<void>[] = [];
 
@@ -107,7 +122,7 @@ export class Client {
         for ( let [ index, file ] of bundle.files.entries() ) {
             downloads.push( 
                 queue.add( 
-                    () => this.downloadFile( target, bundle, index, file, proxy )
+                    () => this.downloadFile( target, bundle, file, transport, proxy )
                 ) 
             );
         }

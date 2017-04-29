@@ -53,7 +53,7 @@ export class DevicesManager implements FileSystem {
     async fetch ( paths ?: string | string[] ) : Promise<FileRecord[]> {
         let unfoldTarget : boolean = false;
 
-        if ( !paths ) {
+        if ( !paths || paths === '/' ) {
             paths = Array.from( this.endpoints.keys() );
             unfoldTarget = true;
         }

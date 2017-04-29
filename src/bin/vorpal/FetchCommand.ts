@@ -39,7 +39,7 @@ export class FetchCommand {
     async execute ( view : View & Partial<IProgressReporter>, command : any, args : any ) {
         this.client.concurrency = +args.options.concurrency || 1;
 
-        await this.client.download( this.client.resolveLocal( args.options.to ), args.path, view );
+        await this.client.download( this.client.resolveLocal( args.options.to ), args.path, 'http', view );
     }
 }
 
