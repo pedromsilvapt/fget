@@ -23,16 +23,15 @@ export class FetchCommand {
             .option( '-t, --to <target>', 'Specify a custom target folder to where the files will be transferred. Defaults to the current working dir' )
             .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
             .option( '-i, --no-tty', 'Allows interactivity and colors/custom codes' )
+            .option( '-o, --overwrite', 'Overwrite existing files (defaults to no)' )
             .option( '--transport <transport>', 'Specify a custom transport (defaults to http)' )
             .autocomplete( AutoComplete( client ) )
             .action( async function ( args : any ) {
-                if ( !( 'tty' in args ) ) {
-                    args.tty = true;
+                if ( !( 'tty' in args.options ) ) {
+                    args.options.tty = true;
                 }
-                
-                let view : View & Partial<IProgressReporter> = args.options.tty ? new TTYProgressView( 'fetching', vorpal.ui.redraw ) : new ProgressView( 'fetching', this );
 
-                console.log( args.options );
+                let view : View & Partial<IProgressReporter> = args.options.tty ? new TTYProgressView( 'fetching', vorpal.ui.redraw ) : new ProgressView( 'fetching', this );
 
                 try {
                     await self.execute( view, this, args );
@@ -47,7 +46,7 @@ export class FetchCommand {
     async execute ( view : View & Partial<IProgressReporter>, command : any, args : any ) {
         this.client.concurrency = +args.options.concurrency || 1;
 
-        await this.client.download( this.client.resolveLocal( args.options.to ), args.path, args.options.transport, view );
+        await this.client.download( this.client.resolveLocal( args.options.to ), args.path, args.overwrite, args.options.transport, view );
     }
 }
 

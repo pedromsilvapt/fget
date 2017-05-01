@@ -57,6 +57,7 @@ program.command( 'fetch <server> [path]' )
     .option( '-t, --to <target>', 'Specify a custom target folder to where the files will be transferred. Defaults to the current working dir' )
     .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
     .option( '-i, --no-tty', 'Allows interactivity and colors/custom codes', x => !!x, true )
+    .option( '-o, --overwrite', 'Overwrite existing files (defaults to no)', x => !!x, false )
     .option( '--transport <transport>', 'Specify a custom transport (defaults to http)' )
     .action( async ( server : string, path : string, options : any ) => {
         const client = new Client( 'http://' + server );
@@ -66,7 +67,7 @@ program.command( 'fetch <server> [path]' )
         try {
             client.concurrency = +options.concurrency || 1;
 
-            await client.download( options.to || process.cwd(), path, options.transport, view );
+            await client.download( options.to || process.cwd(), path, options.overwrite, options.transport, view );
 
         } catch ( error ) {
             view.throw( error );

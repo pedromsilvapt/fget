@@ -62,10 +62,14 @@ export class Client {
         }
     }
 
-    async downloadFile ( targetFolder : string, bundle : IBundleMessage, file : FileRecord, transport : ClientTransport, reporter ?: ProgressReporter ) {
+    async downloadFile ( targetFolder : string, bundle : IBundleMessage, file : FileRecord, overwrite : boolean, transport : ClientTransport, reporter ?: ProgressReporter ) {
         let target = path.join( this.resolveLocal( targetFolder ), file.target || path.basename( file.source ) );
 
         await fs.ensureDir( path.dirname( target ) );
+
+        if ( !overwrite && await fs.exists( file.target ) ) {
+            return target;
+        }
 
         return new Promise( async ( resolve, reject ) => {
             if ( reporter ) {
@@ -94,7 +98,31 @@ export class Client {
         } );
     }
 
-    async download ( target : string, path : string = null, transportName ?: string, reporter ?: Partial<IProgressReporter> ) {
+    async downloadBundle ( bundle : IBundleMessage, target : string, overwrite : boolean, transport : ClientTransport, proxy ?: ProgressReporter ) {
+        let downloads : Promise<void>[] = [];
+
+        let queue = new Queue( this.concurrency, Infinity );
+
+        if ( proxy ) {
+            proxy.bundleStarted( bundle );
+        }
+
+        for ( let [ index, file ] of bundle.files.entries() ) {
+            downloads.push( 
+                queue.add( 
+                    () => this.downloadFile( target, bundle, file, overwrite, transport, proxy )
+                ) 
+            );
+        }
+
+        await Promise.all( downloads );
+        
+        if ( proxy ) {
+            proxy.bundleFinished( bundle );
+        }
+    }
+
+    async download ( target : string, path : string = null, overwrite : boolean, transportName ?: string, reporter ?: Partial<IProgressReporter> ) {
         let proxy : ProgressReporter;
 
         if ( reporter ) {
@@ -111,27 +139,7 @@ export class Client {
 
         let bundle = await Sockets.emit<IBundleMessage>( this.socket, 'command', { name: 'fetch', path: path, transport: transportName } );
 
-        let downloads : Promise<void>[] = [];
-
-        let queue = new Queue( this.concurrency, Infinity );
-
-        if ( proxy ) {
-            proxy.bundleStarted( bundle );
-        }
-
-        for ( let [ index, file ] of bundle.files.entries() ) {
-            downloads.push( 
-                queue.add( 
-                    () => this.downloadFile( target, bundle, file, transport, proxy )
-                ) 
-            );
-        }
-
-        await Promise.all( downloads );
-        
-        if ( proxy ) {
-            proxy.bundleFinished( bundle );
-        }
+        await this.downloadBundle( bundle, target, overwrite, transport, proxy );
     }
 
     async list ( path : string ) : Promise<IListMessage> {
