@@ -5,7 +5,7 @@ import * as express from 'express';
 import * as uid from 'uid';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Bundle } from "./Bundle";
+import { Bundle, BundleDisposable } from "./Bundle";
 import { DevicesManager } from "./FileSystems/DevicesManager";
 import { FileSystem } from "./FileSystems/FileSystem";
 import { NativeFileSystem } from "./FileSystems/NativeFileSystem";
@@ -30,6 +30,8 @@ export class Server extends EventEmitter {
     bundles : Map<string, Bundle> = new Map();
 
     transports : ServerTransportsManager = new ServerTransportsManager();
+
+    clients : ClientConnection[] = [];
 
     constructor ( files : string[], targets : string[] ) {
         super();
@@ -72,7 +74,7 @@ export class Server extends EventEmitter {
         return this;
     }
 
-    async fetch ( path ?: string, transportName ?: string ) {
+    async fetch ( client : ClientConnection, path ?: string, transportName ?: string ) {
         const transport = this.transports.getOrDefault( transportName );
 
         if ( !transport ) {
@@ -85,6 +87,8 @@ export class Server extends EventEmitter {
 
         this.bundles.set( id, bundle );
 
+        client.addDisposable( new BundleDisposable( this.bundles, bundle ) );
+
         if ( transport.serve ) {
             transport.serve( bundle );
         }
@@ -92,11 +96,13 @@ export class Server extends EventEmitter {
         return bundle.toJSON();
     }
 
-    async onCommand ( socket : SocketIO.Socket, command : CommandMessage ) {
+    async onCommand ( client : ClientConnection, command : CommandMessage ) {
+        const socket = client.socket;
+
         this.emit( 'command', command, socket );
 
         if ( command.name === 'fetch' ) {
-            return this.fetch( command.path, command.transport );
+            return this.fetch( client, command.path, command.transport );
         } else if ( command.name === 'list' ) {
             return {
                 files: await this.devices.list( command.path )
@@ -118,10 +124,12 @@ export class Server extends EventEmitter {
         const io = SocketServer( this.http );
 
         io.on('connection', socket => {
-            var clientIp = socket.request.connection.remoteAddress;
+            const client = new ClientConnection( socket );
 
-            if ( InternetProtocol.allowed( clientIp, this.targets ) ) {
-                Sockets.on( socket, 'command', this.onCommand.bind( this, socket ) );
+            client.addDisposable( new ClientConnectionDisposable( this, client ) );
+
+            if ( InternetProtocol.allowed( client.address, this.targets ) ) {
+                Sockets.on( socket, 'command', this.onCommand.bind( this, client ) );
             } else {
                 socket.disconnect();
             }
@@ -142,4 +150,99 @@ export interface FetchCommandMessage {
 export interface ListCommandMessage {
     name: 'list';
     path ?: string;
+}
+
+export interface IDisposable {
+    equals ( obj : IDisposable ) : boolean;
+
+    dispose () : void | Promise<void>;
+}
+
+export interface IDisposablesContainer extends IDisposable {
+    addDisposable ( disposable : IDisposable ) : void;
+    removeDisposable ( disposable : IDisposable ) : void;
+}
+
+export class ClientConnection extends EventEmitter implements IDisposablesContainer {
+    socket : SocketIO.Socket;
+
+    disposables : IDisposable[] = [];
+
+    get address () : string {
+        return this.socket.request.connection.remoteAddress;
+    }
+
+    constructor ( socket : SocketIO.Socket ) {
+        super();
+
+        this.socket = socket;
+
+        this.socket.on( 'disconnect', () => {
+            this.disconnect();
+        } );
+    }
+
+    disconnect () {
+        this.emit( 'disconnect' );
+
+        this.dispose();
+    }
+
+    addDisposable ( disposable : IDisposable ) : void {
+        this.disposables.push( disposable );
+    }
+
+    removeDisposable ( disposable : IDisposable ) : void {
+        const obj = this.disposables.find( each => each.equals( disposable ) );
+
+        const index = this.disposables.indexOf( obj );
+
+        if ( index >= 0 ) {
+            this.disposables.splice( index, 1 );
+        }
+    }
+
+    equals ( obj : IDisposable ) : boolean {
+        if ( obj instanceof ClientConnection ) {
+            return obj.socket == this.socket;
+        }
+
+        return false;
+    }
+
+    async dispose () : Promise<void> {
+        for ( let disposable of this.disposables ) {
+            await disposable.dispose();
+        }
+    }
+}
+
+export class ClientConnectionDisposable implements IDisposable {
+    server : Server;
+    client : ClientConnection;
+
+    constructor ( server : Server, client : ClientConnection ) {
+        this.server = server;
+        this.client = client;
+    }
+
+    equals ( obj : IDisposable ) : boolean {
+        if ( obj instanceof ClientConnectionDisposable ) {
+            return this.server == obj.server && this.client.equals( obj.client );
+        }
+
+        return false;
+    }
+
+    dispose () {
+        let index;
+        
+        do {
+            index = this.server.clients.indexOf( this.client );
+
+            if ( index >= 0 ) {
+                this.server.clients.splice( index, 1 );
+            }
+        } while ( index > 0 );
+    }
 }

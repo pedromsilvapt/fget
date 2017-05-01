@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as isFile from 'is-file';
 import { PathUtils } from "./PathUtils";
+import { IDisposable } from "./Server";
 
 export interface RecordStats {
     type: 'file' | 'folder' | 'virtual';
@@ -70,5 +71,25 @@ export class Bundle {
             id: this.id,
             files: this.files
         };
+    }
+}
+
+export class BundleDisposable implements IDisposable {
+    bundlesCollection : Map<string, Bundle>;
+    bundle : Bundle;
+
+    constructor ( bundles : Map<string, Bundle>, bundle : Bundle ) {
+        this.bundlesCollection = bundles;
+        this.bundle = bundle;
+    }
+
+    equals ( obj : IDisposable ) : boolean {
+        if ( obj instanceof BundleDisposable ) {
+            return this.bundlesCollection == obj.bundlesCollection && this.bundle == obj.bundle;
+        }
+    }
+
+    dispose () {
+        this.bundlesCollection.delete( this.bundle.id );
     }
 }
