@@ -24,6 +24,7 @@ export class FetchCommand {
             .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
             .option( '-i, --no-tty', 'Allows interactivity and colors/custom codes' )
             .option( '-o, --overwrite', 'Overwrite existing files (defaults to no)' )
+            .option( '-w, --watch', 'Whether to keep the connection alive and watch for changes (defaults to false)' )
             .option( '--transport <transport>', 'Specify a custom transport (defaults to http)' )
             .autocomplete( AutoComplete( client ) )
             .action( async function ( args : any ) {
@@ -46,7 +47,7 @@ export class FetchCommand {
     async execute ( view : View & Partial<IProgressReporter>, command : any, args : any ) {
         this.client.concurrency = +args.options.concurrency || 1;
 
-        await this.client.download( this.client.resolveLocal( args.options.to ), args.path, args.overwrite, args.options.transport, view );
+        await this.client.download( this.client.resolveLocal( args.options.to ), args.path, args.options.overwrite, args.options.watch || false, args.options.transport, view );
     }
 }
 

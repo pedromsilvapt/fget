@@ -2,12 +2,13 @@ import * as SocketServer from 'socket.io';
 import * as SocketClient from 'socket.io-client';
 import * as http from 'http';
 import * as express from 'express';
+import * as defer from 'promise-defer';
 import * as uid from 'uid';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Bundle, BundleDisposable } from "./Bundle";
+import { Bundle, BundleDisposable, FileRecord } from "./Bundle";
 import { DevicesManager } from "./FileSystems/DevicesManager";
-import { FileSystem } from "./FileSystems/FileSystem";
+import { FileSystem, WatchEvent, filterWatchFiles, applyWatchEvents } from "./FileSystems/FileSystem";
 import { NativeFileSystem } from "./FileSystems/NativeFileSystem";
 import { PathUtils } from "./PathUtils";
 import { Sockets } from "./Sockets";
@@ -15,6 +16,7 @@ import { InternetProtocol } from "./InternetProtocol";
 import { EventEmitter } from "events";
 import { ServerTransportsManager } from "./Transports/TransportsManager";
 import { HttpServerTransport } from "./Transports/HttpTransport";
+import { ServerTransport } from "./Transports/Transport";
 
 export class Server extends EventEmitter {
     targets : string[];
@@ -63,6 +65,8 @@ export class Server extends EventEmitter {
 
         if ( fs instanceof Array ) {
             for ( let target of fs ) {
+                target = path.resolve( target );
+
                 this.mount( PathUtils.join( endpoint, path.basename( target ) ), new NativeFileSystem( target ) );
             }
 
@@ -75,6 +79,12 @@ export class Server extends EventEmitter {
     }
 
     async fetch ( client : ClientConnection, path ?: string, transportName ?: string ) {
+        const bundle = this.serve( client, await this.devices.fetch( path ) );
+
+        return bundle.toJSON();
+    }
+
+    serve ( client : ClientConnection, files : FileRecord[], transportName ?: string ) : Bundle {
         const transport = this.transports.getOrDefault( transportName );
 
         if ( !transport ) {
@@ -83,7 +93,7 @@ export class Server extends EventEmitter {
 
         const id : string = uid( 32 );
 
-        const bundle = new Bundle( id, await this.devices.fetch( path ) );
+        const bundle = new Bundle( id, files );
 
         this.bundles.set( id, bundle );
 
@@ -93,7 +103,37 @@ export class Server extends EventEmitter {
             transport.serve( bundle );
         }
 
-        return bundle.toJSON();
+        return bundle;
+    }
+
+    async watch ( client : ClientConnection, path ?: string, transport ?: string ) : Promise<WatchCommandResponse> {
+        const deferred = defer<void>();
+
+        const id : string = uid( 32 );        
+
+        const isFile : ( file : FileRecord ) => boolean = file => file.stats.type === 'file';
+
+        const events = this.devices.watch( path || '', deferred.promise )
+            .map( event => filterWatchFiles( [ event ], isFile )[ 0 ] ).filter( x => !!x )
+            .multicast();
+
+        events.filter( event => event.type !== 'ready' ).forEach( event => {
+            const files = applyWatchEvents( [], [ event ] );
+
+            if ( files.length ) {
+                const bundle = this.serve( client, files ).toJSON();
+
+                client.socket.emit( 'watch', { id, bundle } );
+            }
+        } );
+
+        client.addDisposable( new ClientWatcherDisposable( client, deferred ) );
+
+        const event = await events.take( 1 ).reduce<WatchEvent>( ( _, a ) => a, null );
+
+        const bundle = this.serve( client, event.files ).toJSON();
+
+        return { id, bundle };
     }
 
     async onCommand ( client : ClientConnection, command : CommandMessage ) {
@@ -105,8 +145,13 @@ export class Server extends EventEmitter {
             return this.fetch( client, command.path, command.transport );
         } else if ( command.name === 'list' ) {
             return {
-                files: await this.devices.list( command.path )
+                files: await this.devices.list( command.path, {
+                    recursive: command.recursive || false,
+                    folderSizes: command.folderSizes || false
+                } )
             };
+        } else if ( command.name === 'watch' ) {
+            return await this.watch( client, command.path, command.transport );
         } else {
             throw new Error( 'Invalid command: ' + command.name );
         }
@@ -139,17 +184,33 @@ export class Server extends EventEmitter {
     }
 }
 
-export type CommandMessage = FetchCommandMessage | ListCommandMessage;
+export type CommandMessage = FetchCommandMessage | ListCommandMessage | WatchCommandMessage;
 
 export interface FetchCommandMessage {
     name: 'fetch';
     path ?: string;
     transport ?: string;
+    watch ?: boolean;
 }
+
+export type FetchCommandResponse = any;
 
 export interface ListCommandMessage {
     name: 'list';
     path ?: string;
+    recursive?: boolean;
+    folderSizes?: boolean;
+}
+
+export interface WatchCommandMessage {
+    name: 'watch';
+    path ?: string;
+    transport ?: string;
+}
+
+export interface WatchCommandResponse {
+    id: string;
+    bundle: FetchCommandResponse;
 }
 
 export interface IDisposable {
@@ -244,5 +305,27 @@ export class ClientConnectionDisposable implements IDisposable {
                 this.server.clients.splice( index, 1 );
             }
         } while ( index > 0 );
+    }
+}
+
+export class ClientWatcherDisposable implements IDisposable {
+    client : ClientConnection;
+    lifetime : defer.Deferred<void>;
+
+    constructor ( client : ClientConnection, lifetime : defer.Deferred<void> ) {
+        this.client = client;
+        this.lifetime = lifetime;
+    }
+
+    equals ( obj : IDisposable ) : boolean {
+        if ( obj instanceof ClientWatcherDisposable ) {
+            return this.client === obj.client && this.lifetime === obj.lifetime;
+        }
+
+        return false;
+    }
+
+    dispose () {
+        this.lifetime.resolve( void 0 );
     }
 }

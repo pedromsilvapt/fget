@@ -4,6 +4,7 @@ import * as program from 'commander';
 import * as Vorpal from 'vorpal';
 import * as logUpdate from 'log-update';
 import * as pkginfo from 'pkginfo';
+import * as path from 'path';
 
 import { Server, CommandMessage } from "../Server";
 import { Client, IListMessage } from "../Client";
@@ -27,6 +28,8 @@ program.command( 'serve <files...>' )
     .option( '-p, --port <port>', 'Port to use to listen for connections', x => +x, 8099 )
     .action( async ( files : string[], options ) => {
         try {
+            files = files.map( file => path.resolve( file ) );
+
             console.log( chalk.yellow( 'Starting up fget, serving' ), chalk.cyan( files.join( ',' ) ) );
 
             const server = new Server( files, [ '192.168.1.4' ] );
@@ -58,6 +61,7 @@ program.command( 'fetch <server> [path]' )
     .option( '-s, --stream', 'Redirects output to the stdout. Only transfers the first file found' )
     .option( '-i, --no-tty', 'Allows interactivity and colors/custom codes', x => !!x, true )
     .option( '-o, --overwrite', 'Overwrite existing files (defaults to no)', x => !!x, false )
+    .option( '-w, --watch', 'Whether to keep the connection alive and watch for changes (defaults to false)' )
     .option( '--transport <transport>', 'Specify a custom transport (defaults to http)' )
     .action( async ( server : string, path : string, options : any ) => {
         const client = new Client( 'http://' + server );
@@ -67,7 +71,7 @@ program.command( 'fetch <server> [path]' )
         try {
             client.concurrency = +options.concurrency || 1;
 
-            await client.download( options.to || process.cwd(), path, options.overwrite, options.transport, view );
+            await client.download( options.to || process.cwd(), path, options.overwrite, options.transport, options.watch, view );
 
         } catch ( error ) {
             view.throw( error );
@@ -79,11 +83,17 @@ program.command( 'fetch <server> [path]' )
 program.command( 'list <server> [path]' )
     .description( 'Query the server for a description of available resources at the specified path' )
     .alias( 'ls' )
-    .option( '-s, --size', 'Display sizes of directories' )
+    .option( '-r, --recursive', 'List recursively' )
+    .option( '-s, --sizes', 'Show folder sizes' )
+    .option( '-o, --order <fields>', 'Order by name, type, extension, date or size' )
     .action( async ( server : string, path : string, options : any ) => {
         const client = new Client( 'http://' + server );
 
-        let view : ListView = new ListView( console );
+        let view : ListView = new ListView( console, {
+            order: options.order ? options.order.split( ',' ) : null,
+            folderSizes: options.sizes,
+            recursive: options.recursive
+        } );
 
         try {
             view.render( await client.list( path ) );

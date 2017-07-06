@@ -3,7 +3,8 @@ import * as Queue from 'promise-queue';
 import * as fs from 'fs-promise';
 import * as path from 'path';
 import * as got from 'got';
-import { Server } from "./Server";
+import * as most from 'most';
+import { Server, WatchCommandResponse } from "./Server";
 import { FileRecord } from "./Bundle";
 import { ProgressReporter, IProgressReporter, Progress, ProgressBar } from "./ProgressReporter";
 import { Sockets } from "./Sockets";
@@ -11,6 +12,7 @@ import { PathUtils } from "./PathUtils";
 import { ClientTransportsManager } from "./Transports/TransportsManager";
 import { ClientTransport } from "./Transports/Transport";
 import { HttpClientTransport } from "./Transports/HttpTransport";
+import { WatchEvent, ListOptions } from "./FileSystems/FileSystem";
 
 
 export class Client {
@@ -26,6 +28,8 @@ export class Client {
 
     transports : ClientTransportsManager = new ClientTransportsManager();
 
+    watchers : WatcherServer;
+
     constructor ( source : string ) {
         this.source = source;
 
@@ -36,6 +40,8 @@ export class Client {
         this.transports.setup( this );
 
         this.transports.defaultTransport = 'http';
+
+        this.watchers = new WatcherServer( this.socket );
     }
 
     resolve ( path : string = '' ) {
@@ -116,13 +122,13 @@ export class Client {
         }
 
         await Promise.all( downloads );
-        
+
         if ( proxy ) {
             proxy.bundleFinished( bundle );
         }
     }
 
-    async download ( target : string, path : string = null, overwrite : boolean, transportName ?: string, reporter ?: Partial<IProgressReporter> ) {
+    async download ( target : string, path : string = null, overwrite : boolean, watch : boolean, transportName ?: string, reporter ?: Partial<IProgressReporter> ) {
         let proxy : ProgressReporter;
 
         if ( reporter ) {
@@ -140,12 +146,20 @@ export class Client {
         let bundle = await Sockets.emit<IBundleMessage>( this.socket, 'command', { name: 'fetch', path: path, transport: transportName } );
 
         await this.downloadBundle( bundle, target, overwrite, transport, proxy );
+
+        if ( watch ) {
+            await this.watchers.watch( path ).map( bundle => {
+                console.log( bundle );
+
+                return this.downloadBundle( bundle, target, overwrite, transport, proxy );
+            } ).await().forEach( x => x );
+        }
     }
 
-    async list ( path : string ) : Promise<IListMessage> {
+    async list ( path : string, options : Partial<ListOptions> = {} ) : Promise<IListMessage> {
         path = this.resolve( path );
 
-        return Sockets.emit<IListMessage>( this.socket, 'command', { name: 'list', path: path } );
+        return Sockets.emit<IListMessage>( this.socket, 'command', { name: 'list', path: path, recursive: options.recursive, folderSizes: options.folderSizes } );
     }
 }
 
@@ -156,4 +170,30 @@ export interface IBundleMessage {
 
 export interface IListMessage {
     files: FileRecord[]
+}
+
+export class WatcherServer {
+    socket : SocketIOClient.Socket;
+
+    events : most.Stream<WatchCommandResponse>;
+
+    constructor ( socket : SocketIOClient.Socket ) {
+        this.socket = socket;
+    }
+
+    listen ( id : string ) : most.Stream<IBundleMessage> {
+        if ( !this.events ) {
+            this.events = most.fromEvent<WatchCommandResponse>( 'watch', this.socket ).multicast();
+        }
+
+        return this.events.tap( console.log.bind( console ) ).filter( event => event.id === id ).map( event => event.bundle );
+    }
+
+    watch ( files : string, transport ?: string ) : most.Stream<IBundleMessage> {
+        const response = Sockets.emit<WatchCommandResponse>( this.socket, 'command', { name: 'watch', files, transport } );
+
+        // response.then( console.log.bind( console, 1, 2 ) ).catch( console.error.bind( console, 'ERROR' ) );
+
+        return most.fromPromise( response ).flatMap( message => this.listen( message.id ) );
+    }
 }

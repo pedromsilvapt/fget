@@ -41,7 +41,11 @@ export class PathUtils {
     }
 
     static dirname ( string : string ) : string {
-        return path.dirname( string );
+        return path.dirname( string ) || '';
+    }
+
+    static basename ( string : string ) : string {
+        return path.basename( string ) || '';
     }
 
     static resolve ( string : string ) : string {

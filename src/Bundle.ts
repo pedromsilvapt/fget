@@ -4,10 +4,13 @@ import * as fs from 'fs';
 import * as isFile from 'is-file';
 import { PathUtils } from "./PathUtils";
 import { IDisposable } from "./Server";
+import { WatchEvent } from "./FileSystems/FileSystem";
 
 export interface RecordStats {
     type: 'file' | 'folder' | 'virtual';
     size?: number;
+    ownSize?: number;
+    childrenSize?: number;
     updatedAt?: number;
     createdAt?: number;
 }
@@ -21,6 +24,8 @@ export class FileRecord {
         return new FileRecord( source, target, {
             type: stats.isFile() ? 'file' : 'folder',
             size: stats.size,
+            ownSize: stats.size,
+            childrenSize: 0,
             updatedAt: stats.mtime.valueOf() as any as number,
             createdAt: stats.atime.valueOf() as any as number
         } );
